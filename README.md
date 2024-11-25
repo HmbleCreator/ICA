@@ -70,4 +70,4 @@ Amit Kumar, Rakshit Malik, Kumar Tejaswa
 ## Acknowledgments
 
 - NLTK team for their comprehensive NLP toolkit
-- Python tkinter documentation for GUI implementation guidance
+- Python customtkinter documentation for GUI implementation guidance
