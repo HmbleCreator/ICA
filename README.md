@@ -51,7 +51,7 @@ python main.py
 
 ## Dependencies
 
-- tkinter: GUI framework
+- customtkinter: GUI framework
 - nltk: Natural Language Processing toolkit
 - regex: Regular expression operations
 
