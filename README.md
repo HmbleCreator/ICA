@@ -1,4 +1,3 @@
-# ICA (Intelligent Code Assistant)
 # Multi-Language Code Summarizer
 
 A Python-based tool that analyzes and summarizes code across different programming languages. The application provides a graphical user interface for easy interaction and generates comprehensive summaries of code structure, functions, and key concepts.
