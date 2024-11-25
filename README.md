@@ -33,7 +33,7 @@ pip install -r requirements.txt
 
 1. Run the application:
 ```bash
-python code_summarizer.py
+python main.py
 ```
 
 2. Using the GUI:
