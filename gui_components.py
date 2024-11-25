@@ -2,12 +2,65 @@ import customtkinter as ctk
 from tkinter import messagebox, filedialog
 import re
 import os
-import sys
+import ast
 import nltk
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
-from language_patterns import get_supported_languages, get_language_patterns
+from typing import List, Dict, Any
+
+class CodeAnalyzer:
+    @staticmethod
+    def analyze_function(func_node: ast.FunctionDef) -> Dict[str, Any]:
+        """
+        Analyze a function's structure and details.
+        
+        Args:
+            func_node (ast.FunctionDef): AST node representing a function
+        
+        Returns:
+            Dict containing function details
+        """
+        function_details = {
+            'name': func_node.name,
+            'args': [arg.arg for arg in func_node.args.args],
+            'docstring': ast.get_docstring(func_node) or '',
+            'line_count': len(func_node.body)
+        }
+        
+        return function_details
+
+    @staticmethod
+    def infer_function_description(func_name: str, func_body: List[ast.AST]) -> str:
+        """
+        Attempt to infer function purpose based on name and body.
+        
+        Args:
+            func_name (str): Name of the function
+            func_body (List[ast.AST]): Function body AST nodes
+        
+        Returns:
+            str: Inferred function description
+        """
+        # Basic heuristics for function purpose inference
+        purpose_hints = {
+            'extract': 'extracts or retrieves data',
+            'process': 'processes or transforms data',
+            'calculate': 'performs calculations',
+            'generate': 'generates or creates content',
+            'validate': 'checks or validates input',
+            'parse': 'parses or interprets data',
+            'convert': 'converts between different formats',
+            'load': 'loads resources or data',
+            'save': 'saves or stores data'
+        }
+        
+        # Check function name for purpose hints
+        for hint, description in purpose_hints.items():
+            if hint in func_name.lower():
+                return f"A function that {description}"
+        
+        return "Purpose could not be automatically inferred"
 
 class CodeSummarizerApp(ctk.CTkFrame):
     def __init__(self, master):
@@ -43,16 +96,14 @@ class CodeSummarizerApp(ctk.CTkFrame):
         )
         self.language_label.grid(row=0, column=0, padx=(0, 10), sticky="w")
 
-        supported_languages = get_supported_languages()
-        self.language_var = ctk.StringVar()
+        self.language_var = ctk.StringVar(value="Python")
         self.language_combo = ctk.CTkComboBox(
             self.top_frame, 
-            values=[lang.capitalize() for lang in supported_languages],
+            values=["Python", "JavaScript", "Java"],
             variable=self.language_var,
             state="readonly",
             width=200
         )
-        self.language_combo.set(supported_languages[0].capitalize())
         self.language_combo.grid(row=0, column=1, sticky="ew", padx=(0, 10))
 
         # File Selection Button
@@ -72,12 +123,12 @@ class CodeSummarizerApp(ctk.CTkFrame):
         )
         self.code_label.grid(row=2, column=0, pady=(10, 5), sticky="w")
 
-        # Code Input Textbox with Scrollbar
+        # Code Input Textbox
         self.code_text = ctk.CTkTextbox(
             self, 
             corner_radius=10,
             font=("Consolas", 12),
-            wrap="none"  # Disable word wrapping
+            wrap="none"
         )
         self.code_text.grid(row=4, column=0, pady=10, sticky="nsew")
 
@@ -127,41 +178,25 @@ class CodeSummarizerApp(ctk.CTkFrame):
     def open_file(self):
         """Open and read a file"""
         try:
-            # Open file dialog
             file_path = filedialog.askopenfilename(
                 title="Select Code File",
                 filetypes=[
                     ("Python Files", "*.py"),
-                    ("JavaScript Files", "*.js"),
-                    ("Java Files", "*.java"),
                     ("All Files", "*.*")
                 ]
             )
             
-            # If a file is selected
             if file_path:
-                # Determine language from file extension
-                file_extension = os.path.splitext(file_path)[1][1:].lower()
-                language_map = {
-                    'py': 'python',
-                    'js': 'javascript',
-                    'java': 'java'
-                }
-                language = language_map.get(file_extension, file_extension)
-                
-                # Read file contents
                 with open(file_path, 'r') as file:
                     code_contents = file.read()
                 
-                # Clear existing content
                 self.code_text.delete("1.0", "end")
-                
-                # Insert file contents
                 self.code_text.insert("1.0", code_contents)
                 
-                # Set language in combo box
-                if language.capitalize() in self.language_combo['values']:
-                    self.language_combo.set(language.capitalize())
+                # Set language based on file extension
+                file_ext = os.path.splitext(file_path)[1].lower()
+                if file_ext == '.py':
+                    self.language_combo.set("Python")
         except Exception as e:
             messagebox.showerror("File Open Error", str(e))
 
@@ -174,20 +209,19 @@ class CodeSummarizerApp(ctk.CTkFrame):
 
     def summarize(self):
         """Generate and display code summary"""
-        # Extract code and language
         code = self.code_text.get("1.0", "end-1c")
         language = self.language_var.get().lower()
 
-        # Validate input
         if not code.strip():
             messagebox.showwarning("Warning", "Please enter some code to summarize.")
             return
 
-        # Generate summary
         try:
-            summary = self.extract_code_structure(code, language)
+            if language == 'python':
+                summary = self.summarize_python_code(code)
+            else:
+                summary = f"Summarization for {language} is not yet supported."
             
-            # Update summary text
             self.summary_text.configure(state="normal")
             self.summary_text.delete("1.0", "end")
             self.summary_text.insert("end", summary)
@@ -195,109 +229,81 @@ class CodeSummarizerApp(ctk.CTkFrame):
         except Exception as e:
             messagebox.showerror("Error", f"An error occurred: {str(e)}")
 
-    def extract_code_structure(self, code, language):
-        """Generate a comprehensive summary of the code."""
-        patterns = get_language_patterns(language)
-        if not patterns:
-            return f"Unsupported language: {language}"
-
-        # Clean comments first
-        code_clean = re.sub(patterns['comment_multi'], '', code)
-        code_clean = re.sub(patterns['comment_single'], '', code_clean)
-
-        # Extract structure
-        structure = {
-            'classes': re.findall(patterns['class'], code_clean),
-            'functions': self.extract_function_details(code, patterns),
-            'imports': re.findall(patterns['import'], code_clean),
-            'modules': patterns['module_used'],
-            'module_purposes': patterns['module_purposes']
-        }
-
-        # Preprocess and extract key terms
-        tokens = self.preprocess_code(code, language)
-        key_terms = self.extract_key_terms(tokens)
-
-        # Build summary
-        summary = []
+    def summarize_python_code(self, code: str) -> str:
+        """
+        Generate a comprehensive summary of Python code.
         
-        # Basic description
-        summary.append(f"This code is written in {language.capitalize()}.")
+        Args:
+            code (str): Python source code to analyze
         
-        # Classes
-        if structure['classes']:
-            main_class = structure['classes'][0]
-            summary.append(f"It defines a main class '{main_class}' and {len(structure['classes'])-1} additional class(es).")
+        Returns:
+            str: Detailed code summary
+        """
+        try:
+            # Parse the code into an AST
+            tree = ast.parse(code)
+            
+            # Analyze code structure
+            functions = []
+            classes = []
+            imports = []
+            
+            # Traverse the AST
+            for node in ast.walk(tree):
+                # Collect function details
+                if isinstance(node, ast.FunctionDef):
+                    func_details = CodeAnalyzer.analyze_function(node)
+                    func_details['description'] = CodeAnalyzer.infer_function_description(
+                        func_details['name'], 
+                        node.body
+                    )
+                    functions.append(func_details)
+                
+                # Collect class details
+                elif isinstance(node, ast.ClassDef):
+                    classes.append(node.name)
+                
+                # Collect import details
+                elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                    if isinstance(node, ast.Import):
+                        imports.extend([alias.name for alias in node.names])
+                    else:
+                        imports.append(node.module)
+            
+            # Prepare summary sections
+            summary_parts = [
+                "This code implements a Python application.",
+                f"It defines {len(classes)} class(es) and {len(functions)} function(s)."
+            ]
+            
+            # Class summary
+            if classes:
+                summary_parts.append(f"Classes defined: {', '.join(classes)}")
+            
+            # Function details
+            if functions:
+                summary_parts.append("Key functions:")
+                for func in functions:
+                    args_str = ', '.join(func['args']) if func['args'] else 'no arguments'
+                    summary_parts.append(
+                        f"- '{func['name']}' takes {len(func['args'])} argument(s) ({args_str}). "
+                        f"{func['description']}."
+                    )
+            
+            # Import summary
+            if imports:
+                summary_parts.append(f"Libraries used: {', '.join(set(imports))}")
+            
+            # Key terms extraction
+            tokens = [word for word in re.findall(r'\b\w+\b', code.lower()) 
+                      if word not in set(stopwords.words('english'))]
+            freq_dist = nltk.FreqDist(tokens)
+            key_terms = [term for term, _ in freq_dist.most_common(5)]
+            summary_parts.append(f"Key concepts include: {', '.join(key_terms)}")
+            
+            return " ".join(summary_parts)
         
-        # Functions
-        if structure['functions']:
-            summary.append("The code includes several key functions:")
-            for func_name, args in structure['functions'].items():
-                args_text = ", ".join(args) if args else "no arguments"
-                summary.append(f"- '{func_name}' takes {len(args)} argument(s) ({args_text})")
-        
-        # Libraries and their purposes
-        detected_modules = set(structure['modules']).intersection(
-            module for imp in structure['imports'] 
-            for module in structure['modules'] 
-            if module.lower() in imp.lower()
-        )
-        
-        for module in detected_modules:
-            purpose = structure['module_purposes'].get(module)
-            if purpose:
-                summary.append(f"The '{module}' module is used to {purpose}.")
-        
-        # Key terms
-        summary.append(f"Key concepts in the code include: {', '.join(key_terms)}.")
-
-        return " ".join(summary)
-
-    def extract_function_details(self, code, patterns):
-        """Extract function names and their arguments."""
-        functions = {}
-        
-        # Clean comments first
-        code_clean = re.sub(patterns['comment_multi'], '', code)
-        code_clean = re.sub(patterns['comment_single'], '', code_clean)
-        
-        # Find functions and their arguments
-        func_matches = re.finditer(patterns['function'], code_clean)
-        for match in func_matches:
-            func_name = next(group for group in match.groups() if group is not None)
-            # Find arguments for this function
-            arg_match = re.search(patterns['arguments'], match.group())
-            args = []
-            if arg_match:
-                args_str = arg_match.group(1)
-                if args_str:
-                    args = [arg.strip() for arg in args_str.split(',')]
-            functions[func_name] = args
-        
-        return functions
-
-    def preprocess_code(self, code, language):
-        """Preprocess code for key terms extraction."""
-        patterns = get_language_patterns(language)
-        if not patterns:
-            return []
-
-        # Remove comments
-        code = re.sub(patterns['comment_multi'], '', code)
-        code = re.sub(patterns['comment_single'], '', code)
-        
-        # Split camelCase and snake_case
-        code = re.sub(r'([a-z0-9])([A-Z])', r'\1 \2', code)
-        code = code.replace('_', ' ')
-        
-        tokens = word_tokenize(code.lower())
-        stop_words = set(stopwords.words('english'))
-        tokens = [token for token in tokens if token.isalpha() and token not in stop_words]
-        lemmatizer = WordNetLemmatizer()
-        tokens = [lemmatizer.lemmatize(token) for token in tokens]
-        return tokens
-
-    def extract_key_terms(self, tokens, n=5):
-        """Extract the most common terms from the code."""
-        freq_dist = nltk.FreqDist(tokens)
-        return [term for term, _ in freq_dist.most_common(n)]
+        except SyntaxError as e:
+            return f"Syntax Error: {str(e)}"
+        except Exception as e:
+            return f"Analysis Error: {str(e)}"
